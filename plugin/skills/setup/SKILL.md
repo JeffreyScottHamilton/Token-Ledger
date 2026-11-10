@@ -10,7 +10,8 @@ Never edit `settings.json` by hand — the installer does it (with a backup) and
 
 The ledger CLI is: `node "${CLAUDE_PLUGIN_ROOT}/bin/token-ledger.mjs"` (same command in Bash and PowerShell).
 If that path was not filled in above (you see a literal `${...}`), find the plugin folder with
-`claude plugin list --json` (field `installPath` of `token-ledger@token-ledger`) and use `<installPath>/bin/token-ledger.mjs`.
+`claude plugin list --json` (entry `token-ledger@token-ledger`: use `readFromFolder` if present, otherwise `installPath`)
+and run `<that folder>/bin/token-ledger.mjs`.
 
 ## 1. Check the computer
 
