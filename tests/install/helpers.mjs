@@ -18,9 +18,10 @@ export function tempEnv(settings) {
   fs.mkdirSync(claudeDir, { recursive: true });
   const settingsFile = join(claudeDir, 'settings.json');
   if (settings !== undefined) fs.writeFileSync(settingsFile, typeof settings === 'string' ? settings : JSON.stringify(settings, null, 2) + '\n');
+  const { TOKEN_LEDGER_PORT: _p, ...parent } = process.env;
   const env = {
-    ...process.env, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: claudeDir, TOKEN_LEDGER_HOME: dataDir,
-    TOKEN_LEDGER_MANAGED_SETTINGS_DIR: join(base, 'managed'), TOKEN_LEDGER_PORT: '1',
+    ...parent, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: claudeDir, TOKEN_LEDGER_HOME: dataDir,
+    TOKEN_LEDGER_MANAGED_SETTINGS_DIR: join(base, 'managed'),
   };
   const lines = [];
   const ctx = {

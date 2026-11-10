@@ -74,10 +74,16 @@ function makeContext(ctx = {}) {
     configFile: join(dataDir, 'config.json'),
     summaryFile: join(dataDir, 'summary.json'),
     backups: join(dataDir, 'backups'),
+    defaultPort: envPort(env),
     out: ctx.out || ((s) => process.stdout.write(s + '\n')),
     err: ctx.err || ((s) => process.stderr.write(s + '\n')),
   };
   return c;
+}
+
+function envPort(env) {
+  const p = Number(env.TOKEN_LEDGER_PORT);
+  return Number.isInteger(p) && p > 0 && p < 65536 ? p : DEFAULT_PORT;
 }
 
 function ensureDir(d) {
@@ -186,7 +192,7 @@ async function doInstall(c, flags, { upgrade = false } = {}) {
   manifest.env = manifest.env || {};
   const config = readJsonFile(c.configFile, {}) || {};
   const prevVersion = config.installedVersion || null;
-  const port = Number.isInteger(config.port) ? config.port : DEFAULT_PORT;
+  const port = Number.isInteger(config.port) ? config.port : c.defaultPort;
   const managed = readManagedSettings(c.env);
   const plan = planTelemetry({ settingsEnv: st.data.env, manifestEnv: manifest.env, managed, settings: st.data, port });
 
@@ -246,7 +252,7 @@ async function doInstall(c, flags, { upgrade = false } = {}) {
   // config.json: keep every existing key; fill ours.
   const cfg = structuredClone(config);
   cfg.nodePath = process.execPath;
-  if (!Number.isInteger(cfg.port)) cfg.port = DEFAULT_PORT;
+  if (!Number.isInteger(cfg.port)) cfg.port = c.defaultPort;
   const label = typeof flags.label === 'string' ? sanitizeLabel(flags.label) : null;
   if (label) { cfg.sourceLabel = label; cfg.label = label; }
   if (!cfg.sourceLabel) cfg.sourceLabel = sanitizeLabel(os.hostname());
@@ -476,7 +482,7 @@ async function statuslineRender(c) {
 async function doVerify(c, flags) {
   const config = readJsonFile(c.configFile, null);
   if (!config) { c.err('Token Ledger is not set up on this computer (no config.json). Run: token-ledger install --yes'); return 3; }
-  const port = Number.isInteger(config.port) ? config.port : DEFAULT_PORT;
+  const port = Number.isInteger(config.port) ? config.port : c.defaultPort;
   let ok = true;
   const h = await httpGetJson(port, '/healthz');
   if (h && h.status === 200 && h.body && h.body.ok) c.out(`✓ Collector answers on 127.0.0.1:${port} (version ${h.body.version || '?'})`);
@@ -556,7 +562,7 @@ async function doDoctor(c) {
   c.out(`Ledger data dir: ${c.dataDir} ${fs.existsSync(c.dataDir) ? '' : '(missing)'}`);
   const cfg = readJsonFile(c.configFile, null);
   c.out(`config.json: ${cfg ? JSON.stringify(redactConfig(cfg)) : 'missing — run token-ledger install'}`);
-  const port = cfg && Number.isInteger(cfg.port) ? cfg.port : DEFAULT_PORT;
+  const port = cfg && Number.isInteger(cfg.port) ? cfg.port : c.defaultPort;
   const h = await httpGetJson(port, '/healthz');
   c.out(`Collector: ${h && h.body && h.body.ok ? `running on 127.0.0.1:${port} (version ${h.body.version})` : `not answering on 127.0.0.1:${port}`}`);
   try {
