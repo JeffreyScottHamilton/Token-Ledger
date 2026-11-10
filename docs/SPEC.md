@@ -42,7 +42,7 @@ Allowlist. Any field not listed is dropped before storage.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `rid` | TEXT PK | `sha256("anthropic-request:" + request_id)` hex, first 32 chars. Fallback key: `sha256("anthropic-message:" + message_id)`. Records with neither are rejected as `partial_record` gaps. |
+| `rid` | TEXT PK | `sha256("anthropic-request:" + request_id)` hex, first 32 chars. `request_id` is the API `request-id` header (`req_…`): OTel `api_request.request_id` and transcript `requestId` carry the same value (verified live on 2.1.321). Records without it are not counted; they are tallied as `partial_record` gaps (no fallback key, so no cross-source double count). |
 | `ts` | INTEGER | request time, ms since epoch (UTC) |
 | `source` | TEXT | source label (`laptop`, `cloud-web`, …), `[a-z0-9-]{1,40}` |
 | `origin` | TEXT | `otel` \| `transcript` \| `relay` \| `demo` |
@@ -113,6 +113,16 @@ Default bind `127.0.0.1:47318`. Non-loopback bind requires `--tls-cert/--tls-key
 - Logs: one line per event (`ts level msg counts`), never bodies, headers or tokens.
 
 ## 6. Sources
+
+OTel record shape (2.1.321, verified): `resourceLogs[].scopeLogs[].logRecords[]`, scope `com.anthropic.claude_code.events`;
+`body.stringValue == "claude_code.api_request"` and/or attribute `event.name` in {`api_request`,`claude_code.api_request`}.
+Attributes: `request_id`, `model`, `session.id`, `event.timestamp` (ISO), `input_tokens`, `output_tokens`,
+`cache_read_tokens`, `cache_creation_tokens`, `cache_creation_5m_tokens`, `cache_creation_1h_tokens`, `query_source`.
+AnyValue ints may be JSON numbers or strings (`intValue`), accept both; also `doubleValue`/`stringValue` numeric.
+Transcript shape: `type=="assistant"` lines, `requestId`, `timestamp`, `sessionId`, `message.model`,
+`message.usage.{input_tokens,output_tokens,cache_creation_input_tokens,cache_read_input_tokens,cache_creation.{ephemeral_5m_input_tokens,ephemeral_1h_input_tokens}}`.
+One response = several lines (one per content block) with identical usage → one record per `requestId`.
+Subagents: `<session>/subagents/agent-*.jsonl` (`isSidechain:true`), own `requestId` each → counted once each.
 
 1. **Live OTel (authoritative for live data).** Installer adds to `~/.claude/settings.json` `env`:
    `CLAUDE_CODE_ENABLE_TELEMETRY=1`, `OTEL_LOGS_EXPORTER=otlp`, `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL=http/json`,
