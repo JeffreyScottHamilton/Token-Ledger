@@ -1,0 +1,16 @@
+{
+  "name": "token-ledger",
+  "description": "Claude Token Ledger: one running total of the Claude Code tokens you use, across computers and cloud environments.",
+  "owner": {
+    "name": "Claude Token Ledger contributors",
+    "url": "https://github.com/JeffreyScottHamilton/Token-Ledger"
+  },
+  "plugins": [
+    {
+      "name": "token-ledger",
+      "source": "./plugin",
+      "description": "Total tracked tokens across your Claude Code computers and cloud environments, inside Claude Code.",
+      "version": "0.1.0"
+    }
+  ]
+}

@@ -203,7 +203,7 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: COMMAND }, async ($, e) => {
-    const arg = e.args.trim().toLowerCase()
+    const arg = (e.args ?? '').trim().toLowerCase()
     try {
       if (arg === '' ) {
         const v = await buildView($)
@@ -253,9 +253,10 @@ export const register: Register = (on, options) => {
         return r
       }
     }
-    void buildView($)
-      .then(v => $.ui.toast(v.counter, { timeoutMs: 8000 }))
-      .catch(() => {})
+    try {
+      const v = await buildView($)
+      $.ui.toast(v.counter, { timeoutMs: 8000 })
+    } catch {}
     return r
   }).catch(($, e, next) => next(e))
 
