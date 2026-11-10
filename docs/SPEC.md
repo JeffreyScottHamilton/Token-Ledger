@@ -4,7 +4,9 @@ Owner: project manager. This file is the contract between components. Changes go
 
 Names:
 - Public name: **Claude Token Ledger**
-- Repository / plugin slug / marketplace name: `claude-token-ledger`
+- Plugin slug and marketplace name: `token-ledger` (install id `token-ledger@token-ledger`). The requested slug
+  `claude-token-ledger` is refused by `claude plugin validate` (2.1.322): third-party names may not start with `claude-`.
+  GitHub repository: `JeffreyScottHamilton/Token-Ledger`. Package name in package.json: `token-ledger`.
 - In-app label: **Token Ledger**
 - Counter line: `Total tracked tokens · 12,483,910`
 
