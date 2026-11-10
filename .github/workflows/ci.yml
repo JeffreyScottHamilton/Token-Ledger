@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CLAUDE_CODE_VERSION: '2.1.322'
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['22.x', '24.x']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node --version
+      - name: Validate JSON manifests
+        shell: bash
+        run: |
+          for f in package.json .claude-plugin/marketplace.json plugin/.claude-plugin/plugin.json plugin/hooks/hooks.json; do
+            node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$f" && echo "ok $f"
+          done
+          node scripts/build-release.mjs --check-versions
+      - run: npm test
+      - name: Release audit (repository paths)
+        run: node scripts/audit-release.mjs
+
+  smoke-bash:
+    name: smoke.sh (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - run: bash scripts/smoke.sh
+
+  smoke-powershell:
+    name: smoke.ps1 (${{ matrix.shell }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [pwsh, powershell]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Run smoke.ps1
+        shell: ${{ matrix.shell }}
+        run: ./scripts/smoke.ps1
+
+  smoke-pwsh-linux:
+    name: smoke.ps1 (pwsh, ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - shell: pwsh
+        run: ./scripts/smoke.ps1
+
+  plugin-validate:
+    name: claude plugin validate + clean-profile install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Install Claude Code (pinned)
+        run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CODE_VERSION }}
+      # `claude plugin validate|marketplace|install|list` need no sign-in or network access
+      # (verified locally with an empty CLAUDE_CONFIG_DIR).
+      - name: Validate marketplace and plugin
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-config
+        run: |
+          claude --version
+          claude plugin validate .
+          claude plugin validate plugin
+      - name: Install from the local marketplace into a clean profile
+        env:
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude-config
+        run: |
+          claude plugin marketplace add "$GITHUB_WORKSPACE"
+          claude plugin install token-ledger@token-ledger
+          claude plugin list | tee list.txt
+          grep -q 'token-ledger@token-ledger' list.txt
+          claude plugin details token-ledger | tee details.txt
+          grep -q 'setup' details.txt
+          claude plugin uninstall token-ledger@token-ledger
+          claude plugin marketplace remove token-ledger

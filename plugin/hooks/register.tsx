@@ -253,9 +253,12 @@ export const register: Register = (on, options) => {
         return r
       }
     }
+    // Interactive: next() settles when the Usage panel closes. A toast raised
+    // while the panel is open is clipped to its title row (verified 2.1.322),
+    // so the counter is shown as the panel closes; the result is untouched.
     try {
       const v = await buildView($)
-      $.ui.toast(v.counter, { timeoutMs: 8000 })
+      $.ui.toast(v.counter, { timeoutMs: 10000 })
     } catch {}
     return r
   }).catch(($, e, next) => next(e))

@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Tag must equal plugin.json, marketplace.json and package.json versions
+        id: ver
+        run: |
+          VERSION=$(node scripts/build-release.mjs --check-versions --tag "$GITHUB_REF_NAME")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - run: npm test
+      - run: bash scripts/smoke.sh
+      - name: Build archives from the tagged tree (allowlisted paths only)
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          mkdir -p dist
+          PATHS="plugin .claude-plugin README.md LICENSE CHANGELOG.md docs demo"
+          git archive --format=tar.gz --prefix="token-ledger-$VERSION/" -o "dist/token-ledger-$VERSION.tar.gz" "$GITHUB_REF_NAME" $PATHS
+          git archive --format=zip    --prefix="token-ledger-$VERSION/" -o "dist/token-ledger-$VERSION.zip"    "$GITHUB_REF_NAME" $PATHS
+          (cd dist && sha256sum "token-ledger-$VERSION.tar.gz" "token-ledger-$VERSION.zip" > SHA256SUMS && cat SHA256SUMS)
+      - name: Audit both archives
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          mkdir -p audit/tar audit/zip
+          tar -xzf "dist/token-ledger-$VERSION.tar.gz" -C audit/tar
+          unzip -q "dist/token-ledger-$VERSION.zip" -d audit/zip
+          node scripts/audit-release.mjs "audit/tar/token-ledger-$VERSION"
+          node scripts/audit-release.mjs "audit/zip/token-ledger-$VERSION"
+          diff -r audit/tar audit/zip
+      - name: Release notes from CHANGELOG
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "CHANGELOG.md has no section for $VERSION" >&2; exit 1; }
+          cat notes.md
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/token-ledger-$VERSION.tar.gz" "dist/token-ledger-$VERSION.zip" dist/SHA256SUMS \
+            --title "Claude Token Ledger $VERSION" --notes-file notes.md --verify-tag
