@@ -6,18 +6,17 @@ What Claude Token Ledger counts, and how sure we are. "Total tracked tokens" is 
 Evidence levels: **verified live** (a real request was observed end to end), **fixture** (tested against recorded or
 synthetic data in the test suite), **unverified** (designed for, not yet observed).
 
-<!-- COVERAGE-STATUS: the manager finalizes the Evidence column from docs/VERIFICATION.md -->
 
 | Source | Status | How it is counted | Evidence |
 | --- | --- | --- | --- |
-| Claude Code terminal CLI (`claude`, `claude -p`) | Covered | Live OpenTelemetry logs + transcript sync; same `request_id`, counted once | _TBD (verified live / fixture / unverified)_ |
-| Subagents and retries | Covered | Each actual API request has its own id and is counted once | _TBD_ |
-| Claude Desktop — Code tab (local sessions) | Covered (same settings and transcripts as the CLI) | Live OTel + transcript sync | _TBD_ |
-| VS Code / JetBrains extension | Covered (same settings and transcripts as the CLI) | Live OTel + transcript sync | _TBD_ |
-| Another computer | Covered after pairing | Relay over HTTPS with an ingest token; durable outbox | _TBD_ |
-| Claude Code on the web / cloud environments | Covered only with a reachable HTTPS collector and a network secret | OTel logs sent to the primary; no local transcripts | _TBD_ |
-| Amazon Bedrock / Google Vertex AI / Foundry as provider | Covered if the telemetry event carries a `request_id` | Live OTel; records without an id are tallied as `partial_record` gaps, not counted | _TBD_ |
-| Organization-managed telemetry (managed settings pin `OTEL_EXPORTER_OTLP_*`) | Partial | Transcript sync only; reported as an `authority` gap | _TBD_ |
+| Claude Code terminal CLI (`claude`, `claude -p`) | Covered | Live OpenTelemetry logs + transcript sync; same `request_id`, counted once | Verified live (Linux) |
+| Subagents and retries | Covered | Each actual API request has its own id and is counted once | Verified live (main + subagent, 3 requests) |
+| Claude Desktop — Code tab (local sessions) | Covered (same settings and transcripts as the CLI) | Live OTel + transcript sync | Unverified |
+| VS Code / JetBrains extension | Covered (same settings and transcripts as the CLI) | Live OTel + transcript sync | Unverified |
+| Another computer | Covered after pairing | Relay over HTTPS with an ingest token; durable outbox | Fixture (self-signed HTTPS, one machine) |
+| Claude Code on the web / cloud environments | Covered only with a reachable HTTPS collector and a network secret | OTel logs sent to the primary; no local transcripts | Unverified (no public collector available) |
+| Amazon Bedrock / Google Vertex AI / Foundry as provider | Covered if the telemetry event carries a `request_id` | Live OTel; records without an id are tallied as `partial_record` gaps, not counted | Unverified |
+| Organization-managed telemetry (managed settings pin `OTEL_EXPORTER_OTLP_*`) | Partial | Transcript sync only; reported as an `authority` gap | Fixture (unit tests) |
 | claude.ai chats (web, desktop chat, mobile) | **Not covered** | No local usage data is exposed | n/a |
 | Cowork sessions | **Not covered** | Not measured | n/a |
 | Direct Anthropic API / Agent SDK apps outside Claude Code | **Not covered** | Only Claude Code telemetry and transcripts are read | n/a |

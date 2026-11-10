@@ -137,7 +137,19 @@ claude plugin uninstall token-ledger@token-ledger
 ## Surfaces verified
 
 <!-- VERIFIED-SURFACES -->
-_To be filled in by the release manager from docs/VERIFICATION.md._
+Tested on 2026-11-10 with Claude Code 2.1.322 and Node.js 22.23 on Linux (a Claude Code cloud container).
+
+| Surface | Status | What was checked |
+| --- | --- | --- |
+| Claude Code terminal (Linux, bash) | **Verified live** | Install from this GitHub repo into a clean profile, setup twice, a real request reached the ledger, `/token-ledger` rose from 36,954 to 76,849 after one real prompt, the notice appeared on closing `/usage`, an existing status line stayed, uninstall restored settings. |
+| Claude Code headless (`claude -p`) | **Verified live** | `/token-ledger` and `/token-ledger details` print the total; `/usage` gains one extra line. |
+| Windows PowerShell | **Simulated** | Setup, replay and uninstall smoke test passed under PowerShell 7.4 on Linux. Not run on Windows itself, and not on Windows PowerShell 5.1. |
+| macOS | **Not verified** | Covered by the CI matrix once the workflows run on GitHub. |
+| Claude Desktop Code tab, VS Code, JetBrains | **Not verified** | The pane and commands pass the plugin test kit for these surfaces; no real client was run. |
+| Second computer / cloud environment | **Fixture only** | Pairing and relay tested over self-signed HTTPS on one machine. No real second machine or public collector was used. |
+| claude.ai website Usage settings | **Not supported** | Anthropic documents no extension point. Claude Code's own Usage screen has none either, so the counter sits beside it. |
+
+Details: [docs/VERIFICATION.md](docs/VERIFICATION.md).
 <!-- /VERIFIED-SURFACES -->
 
 ## Development
