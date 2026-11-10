@@ -57,7 +57,7 @@ node "${CLAUDE_PLUGIN_ROOT}/bin/token-ledger.mjs" import --yes
 node "${CLAUDE_PLUGIN_ROOT}/bin/token-ledger.mjs" verify --live
 ```
 
-Success prints `Verified: a real Claude Code request reached the ledger (+N tokens).`
+Success prints `Verified: a real Claude Code request reached the ledger (N new requests, +N tokens since the check began).`
 If it fails, report the exact line it printed and run `doctor`. Do not claim success without the `Verified:` line.
 
 ## 5. Tell the user what to do next

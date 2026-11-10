@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import {
-  VERSION, dataHome, ledgerPaths, ensureHome, readConfig, readJson, localLabel, collectorPort, projectsDir,
+  VERSION, dataHome, ledgerPaths, ensureHome, readConfig, writeConfig, readJson, localLabel, collectorPort, projectsDir,
   claudeConfigDir, writeFileAtomic,
 } from './paths.mjs';
 
@@ -295,7 +295,13 @@ async function cmdSync(ctx, flags) {
   const cfg = readConfig(ctx.paths);
   const store = await openStoreRW(ctx.paths);
   try {
-    const rep = await syncTranscripts({ store, projectsDir: ctx.projectsDir(flags), source: localLabel(cfg), outbox: !!cfg.relay });
+    // Sync only catches up usage from setup onward. Older history is opt-in via `import`.
+    let since = cfg.syncSince;
+    if (!since || Number.isNaN(Date.parse(since))) {
+      since = new Date().toISOString();
+      writeConfig(ctx.paths, { ...readConfig(ctx.paths), syncSince: since });
+    }
+    const rep = await syncTranscripts({ store, projectsDir: ctx.projectsDir(flags), since, source: localLabel(cfg), outbox: !!cfg.relay });
     await refreshSummaryFile(store, ctx.paths);
     if (flags.json) ctx.out(JSON.stringify(rep, null, 2));
     else if (!flags.quiet) ctx.out(`sync: files=${rep.files} imported=${rep.imported}`);

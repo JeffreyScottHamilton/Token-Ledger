@@ -54,7 +54,7 @@ claude plugin install token-ledger@token-ledger
 
 Then open Claude Code and run `/token-ledger:setup`. (Inside a session the first two are
 `/plugin marketplace add JeffreyScottHamilton/Token-Ledger#v0.1.0` and `/plugin install token-ledger@token-ledger`.)
-`#v0.1.0` pins the release; leave it out to follow the default branch. Full steps: [docs/INSTALL.md](docs/INSTALL.md).
+`#v0.1.0` pins the release; leave it out to follow the default branch (also do that if the tag is not published yet). Full steps: [docs/INSTALL.md](docs/INSTALL.md).
 
 **About the names.** The project is *Claude Token Ledger* and the GitHub repository is
 `JeffreyScottHamilton/Token-Ledger`. The plugin and its marketplace are both named `token-ledger` — not

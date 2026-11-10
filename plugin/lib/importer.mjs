@@ -148,8 +148,8 @@ export async function importTranscripts({ store, projectsDir, since, dryRun = fa
 }
 
 /** Incremental import using stored byte offsets (complete lines only). */
-export async function syncTranscripts({ store, projectsDir, source = 'local', outbox = false }) {
-  const p = await pass({ store, projectsDir, source, mode: 'sync' });
+export async function syncTranscripts({ store, projectsDir, since, source = 'local', outbox = false }) {
+  const p = await pass({ store, projectsDir, since, source, mode: 'sync' });
   const r = commitPass(store, p, { source, outbox });
   p.report.imported = r.accepted;
   p.report.conflicts = r.conflicts;

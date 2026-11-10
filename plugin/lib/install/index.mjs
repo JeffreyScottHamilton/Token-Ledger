@@ -269,6 +269,8 @@ async function doInstall(c, flags, { upgrade = false } = {}) {
   if (!flags['no-start']) {
     const r = cli(c, ['ensure'], { port: cfg.port });
     const h = await waitHealth(cfg.port, 5000);
+    // First sync records the setup time as the catch-up baseline; earlier history stays opt-in (import).
+    cli(c, ['sync', '--quiet'], { port: cfg.port, timeout: 60_000 });
     if (h) c.out(`Collector:     running on 127.0.0.1:${cfg.port} (version ${h.version || '?'})`);
     else { c.err(`Collector did not answer on 127.0.0.1:${cfg.port}. ${r.stderr.trim()} See ${join(c.dataDir, 'collector.log')}.`); return 1; }
   }
@@ -527,7 +529,8 @@ async function doVerify(c, flags) {
     if (!synced && (mode !== 'otel' || Date.now() > until - waitMs / 2)) { cli(c, ['sync'], { timeout: 60_000 }); synced = true; }
     const s = summaryJson(c);
     if (s && typeof s.requests === 'number' && s.requests > b.requests) {
-      c.out(`Verified: a real Claude Code request reached the ledger (+${(s.total - b.total).toLocaleString('en-US')} tokens).`);
+      const n = s.requests - b.requests;
+      c.out(`Verified: a real Claude Code request reached the ledger (${n} new request${n === 1 ? '' : 's'}, +${(s.total - b.total).toLocaleString('en-US')} tokens since the check began).`);
       return 0;
     }
     if (Date.now() > until) break;

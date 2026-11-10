@@ -36,7 +36,7 @@ The commands are the same in PowerShell and Bash unless marked.
    ```
 
    Inside a Claude Code session the same thing is `/plugin marketplace add JeffreyScottHamilton/Token-Ledger#v0.1.0`
-   then `/plugin install token-ledger@token-ledger`. Leave out `#v0.1.0` to follow the default branch instead.
+   then `/plugin install token-ledger@token-ledger`. Leave out `#v0.1.0` to follow the default branch instead, or if that tag is not published yet.
 
 3. **Find the plugin folder**
 
@@ -79,7 +79,7 @@ The commands are the same in PowerShell and Bash unless marked.
    node "<plugin>/bin/token-ledger.mjs" verify --live
    ```
 
-   Expected last line: `Verified: a real Claude Code request reached the ledger (+N tokens).`
+   Expected last line: `Verified: a real Claude Code request reached the ledger (N new requests, +N tokens since the check began).`
    This sends one tiny prompt with `claude -p`, so Claude Code must be signed in.
 
 7. **Restart Claude Code** (exit and reopen) so already-open sessions pick up the telemetry settings.
