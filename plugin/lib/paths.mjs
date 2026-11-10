@@ -35,8 +35,15 @@ export function projectsDir(env = process.env) {
 }
 
 export function collectorPort(env = process.env) {
+  const ok = (p) => Number.isInteger(p) && p > 0 && p < 65536;
   const p = Number(env.TOKEN_LEDGER_PORT);
-  return Number.isInteger(p) && p > 0 && p < 65536 ? p : DEFAULT_PORT;
+  if (ok(p)) return p;
+  // Fall back to the port the installer recorded in config.json, so every caller agrees.
+  try {
+    const c = JSON.parse(fs.readFileSync(join(dataHome(env), 'config.json'), 'utf8'));
+    if (ok(c.port)) return c.port;
+  } catch { /* no config yet */ }
+  return DEFAULT_PORT;
 }
 
 /** Create the data home with 0700 (POSIX). */
