@@ -77,3 +77,25 @@ test('fromTranscriptLine shapes', () => {
   assert.equal(recordTotal(r.record), 10);
   assert.equal(r.record.origin, 'transcript');
 });
+
+test('5m/1h split larger than cache_write is dropped, total kept', async () => {
+  const { validateRecord, fromOtlpLogs } = await import('../../plugin/lib/normalize.mjs');
+  const r = validateRecord({ rid: 'a'.repeat(32), ts: 1, source: 'local', origin: 'otel', model: 'm',
+    input: 1, output: 1, cache_write: 10, cache_read: 1, cache_write_5m: 500, cache_write_1h: 500 });
+  assert.equal(r.cache_write, 10);
+  assert.equal(r.cache_write_5m, null);
+  assert.equal(r.cache_write_1h, null);
+  const ok = validateRecord({ rid: 'b'.repeat(32), ts: 1, source: 'local', origin: 'otel', model: 'm',
+    input: 1, output: 1, cache_write: 10, cache_read: 1, cache_write_5m: 4, cache_write_1h: 6 });
+  assert.equal(ok.cache_write_5m, 4);
+  assert.equal(ok.cache_write_1h, 6);
+  const body = { resourceLogs: [{ scopeLogs: [{ logRecords: [{ body: { stringValue: 'claude_code.api_request' }, attributes: [
+    { key: 'request_id', value: { stringValue: 'req_split' } },
+    { key: 'cache_creation_tokens', value: { intValue: 10 } },
+    { key: 'cache_creation_5m_tokens', value: { intValue: 600 } },
+    { key: 'cache_creation_1h_tokens', value: { intValue: 900 } },
+  ] }] }] }] };
+  const { records } = fromOtlpLogs(body, { source: 'local' });
+  assert.equal(records[0].cache_write, 10);
+  assert.equal(records[0].cache_write_5m, null);
+});

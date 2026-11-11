@@ -41,7 +41,8 @@ Sources and pairing
   pair join <code>                   on another computer: relay its usage to the primary
 
 Setup (installer)
-  install [--yes] | upgrade | uninstall [--keep-data|--erase-data] | doctor | verify
+  install [--yes] [--label NAME] [--no-import] | upgrade | uninstall --keep-data|--erase-data
+  doctor | verify [--live]           verify --live sends one real Claude Code request
   statusline wrap | unwrap | render
 
 Demo

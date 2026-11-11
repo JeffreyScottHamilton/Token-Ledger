@@ -51,6 +51,16 @@ export function recordTotal(r) {
 }
 
 /**
+ * The 5m/1h split is only a breakdown of cache_write. A split that adds up to more than the total
+ * is inconsistent, so it is dropped (the total itself is kept).
+ */
+export function fixBreakdown(rec) {
+  const w5 = rec.cache_write_5m ?? 0, w1 = rec.cache_write_1h ?? 0;
+  if (w5 + w1 > rec.cache_write) { rec.cache_write_5m = null; rec.cache_write_1h = null; }
+  return rec;
+}
+
+/**
  * Validate an incoming normalized record (e.g. from a relay). Returns a NEW allowlisted record or null.
  * `received_at` is assigned by the store at commit time.
  */
@@ -65,7 +75,7 @@ export function validateRecord(r) {
   for (const k of ['cache_write_5m', 'cache_write_1h']) {
     if (r[k] !== null && r[k] !== undefined && !okCount(r[k])) return null;
   }
-  return {
+  return fixBreakdown({
     rid: r.rid,
     ts: r.ts,
     source: r.source,
@@ -78,7 +88,7 @@ export function validateRecord(r) {
     cache_read: r.cache_read,
     cache_write_5m: r.cache_write_5m ?? null,
     cache_write_1h: r.cache_write_1h ?? null,
-  };
+  });
 }
 
 // ---------- OTLP ----------
@@ -167,7 +177,7 @@ export function fromOtlpLogs(body, { source = 'local', now = Date.now() } = {}) 
           if (ts <= 0) ts = NaN;
         }
         if (!Number.isFinite(ts)) ts = now;
-        records.push({
+        records.push(fixBreakdown({
           rid: rid(reqId),
           ts: Math.trunc(ts),
           source,
@@ -180,7 +190,7 @@ export function fromOtlpLogs(body, { source = 'local', now = Date.now() } = {}) 
           cache_read: c.cache_read ?? 0,
           cache_write_5m: Number.isNaN(c.w5) ? null : (c.w5 ?? null),
           cache_write_1h: Number.isNaN(c.w1) ? null : (c.w1 ?? null),
-        });
+        }));
       }
     }
   }
@@ -216,7 +226,7 @@ export function fromTranscriptLine(obj, { source = 'local' } = {}) {
   let ts = typeof obj.timestamp === 'string' ? Date.parse(obj.timestamp) : NaN;
   if (!Number.isFinite(ts) || ts <= 0) return { gap: 'unsupported_format' };
   return {
-    record: {
+    record: fixBreakdown({
       rid: rid(reqId),
       ts: Math.trunc(ts),
       source,
@@ -229,6 +239,6 @@ export function fromTranscriptLine(obj, { source = 'local' } = {}) {
       cache_read: cr ?? 0,
       cache_write_5m: Number.isNaN(w5) ? null : (w5 ?? null),
       cache_write_1h: Number.isNaN(w1) ? null : (w1 ?? null),
-    },
+    }),
   };
 }
