@@ -25,7 +25,12 @@ test('loopback collector: ingest, summary, limits and guards', async () => {
     assert.equal(s.status, 'ok');
 
     const big = Buffer.alloc(1024 * 1024 + 10, 0x20);
-    assert.equal((await requestJson(base + '/v1/logs', { method: 'POST', raw: big, headers: JSONH })).status, 413);
+    // The server answers 413 from Content-Length and closes; a client still uploading may see a reset instead.
+    const bigRes = await requestJson(base + '/v1/logs', { method: 'POST', raw: big, headers: JSONH })
+      .then((r) => r.status, (e) => e.code);
+    assert.ok([413, 'ECONNRESET', 'EPIPE'].includes(bigRes), `oversize body rejected (got ${bigRes})`);
+    const s2 = (await requestJson(base + '/api/v1/summary')).json;
+    assert.equal(s2.total, T.otel1 + T.otel2, 'oversize body stored nothing');
     const pb = await requestJson(base + '/v1/logs', { method: 'POST', raw: Buffer.from('x'), headers: { 'Content-Type': 'application/x-protobuf' } });
     assert.equal(pb.status, 415);
     assert.match(pb.json.message, /http\/json/);

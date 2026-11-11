@@ -54,8 +54,12 @@ test('secondary relays to primary over HTTPS; survives primary outage without lo
       assert.equal(pSum().sources.find((s) => s.label === 'laptop-2').total, T.otel1 + tA);
 
       // combined view on the secondary
-      await secondary.relayNow();
-      const sv = (await requestJson(sBase + '/api/v1/summary')).json;
+      // The combined view comes from the primary's summary, refreshed on a timer: wait for it to catch up.
+      const sv = await waitFor(async () => {
+        await secondary.relayNow();
+        const j = (await requestJson(sBase + '/api/v1/summary')).json;
+        return j.total === T.otel1 + T.otel2 + tA ? j : null;
+      }, 10_000, 100);
       assert.equal(sv.total, T.otel1 + T.otel2 + tA);
       assert.equal(sv.status, 'ok');
       assert.equal(sv.sources.find((s) => s.label === 'laptop-2').kind, 'local');
@@ -76,8 +80,11 @@ test('secondary relays to primary over HTTPS; survives primary outage without lo
       const tB = 35494 - 2 + 200;
       assert.equal(primary.store.summary().total, T.otel1 + T.otel2 + tA + tB);
       assert.equal(primary.store.summary().requests, 4);
-      await secondary.relayNow();
-      const back = (await requestJson(sBase + '/api/v1/summary')).json;
+      const back = await waitFor(async () => {
+        await secondary.relayNow();
+        const j = (await requestJson(sBase + '/api/v1/summary')).json;
+        return j.status === 'ok' && j.total === T.otel1 + T.otel2 + tA + tB ? j : null;
+      }, 10_000, 100);
       assert.equal(back.status, 'ok');
       assert.equal(back.total, T.otel1 + T.otel2 + tA + tB);
     } finally {
