@@ -55,20 +55,29 @@ jobs:
           node-version: '22.x'
       - run: bash scripts/smoke.sh
 
-  smoke-powershell:
-    name: smoke.ps1 (${{ matrix.shell }})
+  # A step's `shell` cannot be an expression, so PowerShell 7 and Windows PowerShell 5.1 are separate jobs.
+  smoke-pwsh-windows:
+    name: smoke.ps1 (pwsh, windows)
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shell: [pwsh, powershell]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
-      - name: Run smoke.ps1
-        shell: ${{ matrix.shell }}
+      - name: Run smoke.ps1 (PowerShell 7)
+        shell: pwsh
+        run: ./scripts/smoke.ps1
+
+  smoke-winpowershell:
+    name: smoke.ps1 (Windows PowerShell 5.1)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Run smoke.ps1 (Windows PowerShell 5.1)
+        shell: powershell
         run: ./scripts/smoke.ps1
 
   smoke-pwsh-linux:
