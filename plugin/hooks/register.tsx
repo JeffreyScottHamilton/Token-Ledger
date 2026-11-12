@@ -8,7 +8,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { LedgerSummary, LedgerView } from '../types'
 import { DISCLAIMER, formatCounter, formatDetails, groupDigits, formatAge } from './format'
 import {
-  MAX_TURNS_ASKED, SYNC_EVERY_MS, forgetList, isCommittedWrite, lastSyncedAt, listDocs, otherDevices,
+  MAX_TURNS_ASKED, SYNC_EVERY_MS, forgetList, lastAccountError, isCommittedWrite, lastSyncedAt, listDocs, otherDevices,
   readRow, sectionText,
 } from './account'
 import type { AccountRow, PendingSync } from './account'
@@ -133,7 +133,8 @@ async function buildView($: $): Promise<LedgerView> {
     const synced = await lastSyncedAt($)
     lines.push(`This device (${acct.row.data.label ?? 'this computer'}): last synced to the page ${synced ? formatAge(new Date(synced).toISOString(), t) + ' ago' : 'not yet'}`)
     if (acct.others === null) {
-      lines.push('Other devices: the account page could not be read; the total above is this computer only.')
+      const why = await lastAccountError($)
+      lines.push(`Other devices: the account page could not be read${why ? ` (${why})` : ''}; the total above is this computer only.`)
     } else if (acct.others.length === 0) {
       lines.push('Other devices: none have reported yet.')
     } else {

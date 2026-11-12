@@ -76,6 +76,23 @@ plugins. This is an independent project, not an Anthropic product.
 Regular claude.ai chats (web, desktop and mobile chat) are not included: they expose no usage data to count.
 See [docs/COVERAGE.md](docs/COVERAGE.md) for exactly what is and is not covered.
 
+## One total across all your devices (your Claude account)
+
+Run `/token-ledger:account` once on each computer. The first run creates a private **Token Ledger** page in your
+Claude account; later runs find it and link that device too.
+
+- `/token-ledger` then shows the combined total: every other device's latest figure plus this computer's live one.
+- The page shows the same total on claude.ai, on the web and on your phone. Only you can open it.
+- Each device updates its own line once a day, in your first Claude Code chat. You type nothing; Claude makes one
+  quick write to the page before answering. `/token-ledger:sync` does it immediately.
+- `/token-ledger account` shows the page link and when this device last synced.
+
+Why Claude makes the write and not the plugin: Claude Code requires a person's approval for writes to your account's
+data, and a plugin cannot ask for that on its own. So a device's line refreshes when you use Claude Code there; a
+device you haven't used in a while shows its last figure. Each daily sync uses a small amount of your usage.
+
+Use either the account page or pairing (below) for a given computer, not both, or its usage is counted twice.
+
 ## Connect another computer
 
 Install on the second computer too, then run `/token-ledger:pair` on both. The first computer (the *primary*) must

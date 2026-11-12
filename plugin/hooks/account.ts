@@ -111,12 +111,24 @@ export async function listDocs($: $, url: string, fresh = false): Promise<{ docs
     const call = $.tool.call({ tool: 'ArtifactData', action: 'list', url, collection: 'devices', query: { limit: 200 } } as never)
     const timeout = $.clock.sleep(LIST_TIMEOUT_MS).then(() => { throw new Error('timeout') })
     const res = await Promise.race([call, timeout])
-    if (res && typeof res === 'object' && 'deny' in (res as object) && (res as { deny?: string }).deny) throw new Error('denied')
+    if (res && typeof res === 'object' && 'deny' in (res as object) && (res as { deny?: string }).deny) throw new Error('denied: ' + (res as { deny?: string }).deny)
     const docs = parseList(res)
+    try { await $.store.delete('accountError') } catch {}
     try { await $.store.set('accountList', { url, fetchedAt: t, docs } satisfies ListCache) } catch {}
     return { docs, fetchedAt: t }
-  } catch {
+  } catch (err) {
+    const why = err instanceof Error ? err.message : String(err)
+    try { await $.store.set('accountError', why.slice(0, 200)) } catch {}
     return usable ? { docs: cached!.docs, fetchedAt: cached!.fetchedAt } : null
+  }
+}
+
+export async function lastAccountError($: $): Promise<string | undefined> {
+  try {
+    const v = await $.store.get('accountError')
+    return typeof v === 'string' ? v : undefined
+  } catch {
+    return undefined
   }
 }
 
