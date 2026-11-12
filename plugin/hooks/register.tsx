@@ -8,7 +8,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { LedgerSummary, LedgerView } from '../types'
 import { DISCLAIMER, formatCounter, formatDetails, groupDigits, formatAge } from './format'
 import {
-  MAX_TURNS_ASKED, SECTION_ID, SYNC_EVERY_MS, forgetList, isCommittedWrite, lastSyncedAt, listDocs, otherDevices,
+  MAX_TURNS_ASKED, SYNC_EVERY_MS, forgetList, isCommittedWrite, lastSyncedAt, listDocs, otherDevices,
   readRow, sectionText,
 } from './account'
 import type { AccountRow, PendingSync } from './account'
@@ -331,26 +331,22 @@ export const register: Register = (on, options) => {
     return r
   }).catch(($, e, next) => next(e))
 
-  // Daily account sync: ask Claude for the one write, at most MAX_TURNS_ASKED turns per session.
-  on('prompt.compose', async ($, e, next) => {
-    const r = await next(e)
-    if (!pending || turnsAsked >= MAX_TURNS_ASKED || !e.tools.includes('ArtifactData') && !e.tools.includes('ToolSearch')) return r
-    return { ...r, sections: [...r.sections, { id: SECTION_ID, text: sectionText(pending), scope: 'session' as const }] }
-  }).catch(($, e, next) => next(e))
-
-  on('turn.complete', async ($, e, next) => {
-    const r = await next(e)
-    if (pending) {
-      turnsAsked++
-      if (turnsAsked >= MAX_TURNS_ASKED) pending = null
-    }
-    return r
+  // Daily account sync: hidden context on the person's next message asks Claude for the one write.
+  // Context rides on that message only (a system-prompt section would stay for the whole thread).
+  on('prompt.submit', async ($, e, next) => {
+    if (!pending || turnsAsked >= MAX_TURNS_ASKED || (e.origin && e.origin.kind !== 'composer')) return next(e)
+    turnsAsked++
+    const note = sectionText(pending)
+    if (turnsAsked >= MAX_TURNS_ASKED) pending = null
+    return next({ ...e, context: [...(e.context ?? []), note] })
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'ArtifactData' }, async ($, e, next) => {
     const r = await next(e)
     try {
-      if (pending && isCommittedWrite(e as unknown as Record<string, unknown>, r, pending)) {
+      // The daily write or a manual /token-ledger:sync: either one marks the day done.
+      const target = pending ?? (await readRow($, await ledgerHome($)))
+      if (target && isCommittedWrite(e as unknown as Record<string, unknown>, r, target)) {
         pending = null
         await $.store.set('accountSyncedAt', await now($))
         await forgetList($)

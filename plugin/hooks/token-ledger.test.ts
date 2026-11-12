@@ -27,11 +27,15 @@ type World = {
   interactive?: boolean
   usageText?: string
   runFails?: boolean
+  /** Rows on the account page: id → { version, data } */
+  docs?: Record<string, { version: number; data: Record<string, unknown> }>
+  pageDown?: boolean
 }
 
 /** Stands in for the engine beneath the plugin. Returns what the plugin did. */
 async function boot($: any, on: On, w: World = {}) {
-  const seen = { toasts: [] as string[], statuses: [] as (string | undefined)[], runs: [] as string[][], opened: [] as string[] }
+  const seen = { toasts: [] as string[], statuses: [] as (string | undefined)[], runs: [] as string[][], opened: [] as string[],
+    tools: [] as Record<string, unknown>[], contexts: [] as (readonly string[] | undefined)[] }
   const clock = mock.clock(on, { now: NOW })
   mock.store(on, w.store ?? {})
   mock.env(on, { TOKEN_LEDGER_HOME: HOME, HOME: '/home/u' })
@@ -55,6 +59,23 @@ async function boot($: any, on: On, w: World = {}) {
   on('ui.toast', (_$, e) => { seen.toasts.push(e.text); return { value: undefined } })
   on('ui.open', (_$, e) => { seen.opened.push(e.id); return { value: { isPlaced: true } } })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  // ArtifactData as Claude Code 2.1.322 answers it: list gives ids and versions, values only in the text.
+  const docs = w.docs ?? {}
+  on('tool.call', { tool: 'ArtifactData' }, (_$, e: any) => {
+    seen.tools.push({ ...e })
+    if (w.pageDown) throw new Error('network')
+    if (e.action === 'list') {
+      const ids = Object.keys(docs)
+      return {
+        result: { db_read: { op: 'list', collection: 'devices', docs: ids.map(id => ({ id, data: {}, version: docs[id]!.version })) } },
+        text: `${ids.length} documents\n=== BEGIN ARTIFACT DB x ===\n` +
+          ids.map(id => JSON.stringify({ id, data: docs[id]!.data, version: docs[id]!.version })).join('\n') + '\n=== END ARTIFACT DB x ===',
+      } as any
+    }
+    if (e.action === 'set') return { result: {}, text: `Database set committed: "devices"/"${e.doc_id}".` } as any
+    return { result: {}, text: 'ok' } as any
+  })
+  on('prompt.submit', (_$, e) => { seen.contexts.push(e.context); return { text: e.text, context: e.context } })
   // The built-in /usage, as core answers it.
   on('command.run', { command: 'usage' }, () => ({ text: w.usageText }))
   const interactive = w.interactive ?? false
@@ -203,4 +224,80 @@ test('autostart failure is recorded and shown in details, start not blocked', as
   const r = await run($, { command: 'token-ledger', args: 'details' })
   expect(r.text).toContain('Collector autostart: last error at')
   expect(r.text).toContain('(ensure): ')
+})
+
+// ---------- account page sync ----------
+
+const PAGE = 'https://claude.ai/artifact/AbCdEf123456'
+const DEVICE = 'd-0123456789ab'
+const ROW = { url: PAGE, device: DEVICE, data: { app: 'token-ledger', v: 1, label: 'Laptop', kind: 'computer', total: 1000, updatedAt: '2026-11-10T09:00:00.000Z' } }
+const OTHER = { app: 'token-ledger', v: 1, label: 'Desktop', kind: 'computer', total: 500, updatedAt: '2026-11-10T08:00:00.000Z' }
+const linked = (s: object) => ({ ...file(s), [`${HOME}/account-row.json`]: JSON.stringify(ROW) })
+const submit = ($: any, text: string) => $.prompt.submit({ text, origin: { kind: 'composer' } })
+
+test('account: counter adds other devices from the page, own row replaced by the live total', async ($, on) => {
+  await boot($, on, { files: linked(SUMMARY), docs: { [DEVICE]: { version: 3, data: ROW.data }, 'd-ffffffffffff': { version: 1, data: OTHER } } })
+  const r = await run($, { command: 'token-ledger', args: '' })
+  expect(r.text).toBe('Total tracked tokens · 12,484,410')
+  const d = await run($, { command: 'token-ledger', args: 'details' })
+  expect(d.text).toContain('Desktop [computer] · 500 tokens')
+  expect(d.text).toContain(`Account page: ${PAGE}`)
+})
+
+test('account: page unreachable shows this computer only, never fails', async ($, on) => {
+  await boot($, on, { files: linked(SUMMARY), pageDown: true })
+  const r = await run($, { command: 'token-ledger', args: '' })
+  expect(r.text).toBe('Total tracked tokens · 12,483,910')
+  const d = await run($, { command: 'token-ledger', args: 'details' })
+  expect(d.text).toContain('could not be read')
+})
+
+test('account: daily sync rides on the next message once, and the committed write marks the day done', async ($, on) => {
+  const seen = await boot($, on, { files: linked(SUMMARY), interactive: true, docs: { [DEVICE]: { version: 3, data: ROW.data } } })
+  await seen.clock.advance(5)
+  await submit($, 'hello')
+  const ctx = seen.contexts.at(-1) ?? []
+  expect(ctx.length).toBe(1)
+  expect(ctx[0]).toContain('"doc_id":"d-0123456789ab"')
+  expect(ctx[0]).toContain('"if_version":3')
+  // Claude makes the write; the hook sees it commit.
+  await $.tool.call({ tool: 'ArtifactData', action: 'set', url: PAGE, collection: 'devices', doc_id: DEVICE, data: ROW.data, if_version: 3 } as any)
+  await submit($, 'next message')
+  expect(seen.contexts.at(-1) ?? []).toEqual([])
+  const a = await run($, { command: 'token-ledger', args: 'account' })
+  expect(a.text).toContain('Last synced: ')
+  expect(a.text).not.toContain('not yet')
+})
+
+test('account: synced within 20 hours asks nothing', async ($, on) => {
+  const seen = await boot($, on, { files: linked(SUMMARY), interactive: true, store: { accountSyncedAt: NOW - 3_600_000 } })
+  await seen.clock.advance(5)
+  await submit($, 'hello')
+  expect(seen.contexts.at(-1) ?? []).toEqual([])
+})
+
+test('account: not linked asks nothing and never calls ArtifactData', async ($, on) => {
+  const seen = await boot($, on, { files: file(SUMMARY), interactive: true })
+  await seen.clock.advance(5)
+  await submit($, 'hello')
+  expect(seen.contexts.at(-1) ?? []).toEqual([])
+  expect(seen.tools.length).toBe(0)
+})
+
+test('account: gives up after two messages if Claude does not make the write', async ($, on) => {
+  const seen = await boot($, on, { files: linked(SUMMARY), interactive: true, docs: {} })
+  await seen.clock.advance(5)
+  await submit($, 'one')
+  await submit($, 'two')
+  await submit($, 'three')
+  const counts = seen.contexts.map(c => (c ?? []).length)
+  expect(counts.slice(-3)).toEqual([1, 1, 0])
+})
+
+test('account: a manual sync write also marks the day done', async ($, on) => {
+  const seen = await boot($, on, { files: linked(SUMMARY), interactive: true, store: { accountSyncedAt: NOW - 3_600_000 } })
+  await seen.clock.advance(5)
+  await $.tool.call({ tool: 'ArtifactData', action: 'set', url: PAGE, collection: 'devices', doc_id: DEVICE, data: ROW.data } as any)
+  const a = await run($, { command: 'token-ledger', args: 'account' })
+  expect(a.text).toContain('Last synced: 0s ago')
 })

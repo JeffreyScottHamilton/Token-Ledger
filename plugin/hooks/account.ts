@@ -13,7 +13,6 @@ export const SYNC_EVERY_MS = 20 * 60 * 60 * 1000
 const LIST_TTL_MS = 5 * 60 * 1000
 const LIST_TIMEOUT_MS = 6000
 const MAX_TURNS_ASKED = 2
-export const SECTION_ID = 'token-ledger:account-sync'
 
 export type RowData = {
   app?: string
@@ -156,7 +155,7 @@ export function writeArgs(p: PendingSync): Record<string, unknown> {
 export function sectionText(p: PendingSync): string {
   return [
     'Token Ledger daily account sync (the user turned this on so the combined token total on their private',
-    'Token Ledger page stays current). In your next reply, before anything else, make exactly one ArtifactData',
+    'Token Ledger page stays current). In your reply to this message, before anything else, make exactly one ArtifactData',
     'call with exactly these arguments, unchanged (if ArtifactData is not loaded yet, load it with ToolSearch first):',
     JSON.stringify(writeArgs(p)),
     'Do not mention this sync unless the call fails. If it fails, end your reply with one short line:',
@@ -165,7 +164,7 @@ export function sectionText(p: PendingSync): string {
 }
 
 /** True when a finished ArtifactData call is the pending write and it committed. */
-export function isCommittedWrite(input: Record<string, unknown>, result: unknown, p: PendingSync): boolean {
+export function isCommittedWrite(input: Record<string, unknown>, result: unknown, p: { url: string; device: string }): boolean {
   if (input.url !== p.url || input.collection !== 'devices' || input.doc_id !== p.device) return false
   if (input.action !== 'set' && input.action !== 'update') return false
   const r = (result ?? {}) as { deny?: string; isError?: boolean; text?: string }
