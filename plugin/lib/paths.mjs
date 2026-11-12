@@ -23,6 +23,7 @@ export function ledgerPaths(home = dataHome()) {
     log: join(home, 'collector.log'),
     backups: join(home, 'backups'),
     relayCa: join(home, 'relay-ca.pem'),
+    accountRow: join(home, 'account-row.json'),
   };
 }
 

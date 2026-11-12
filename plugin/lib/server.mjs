@@ -7,7 +7,7 @@ import { ledgerPaths, ensureHome, readConfig, readJson, localLabel, collectorPor
 import { openStore } from './store.mjs';
 import { fromOtlpLogs, validateRecord } from './normalize.mjs';
 import { verifyToken, bearer } from './tokens.mjs';
-import { buildSummary, writeSummaryFile, writeRemoteSummary } from './summary-file.mjs';
+import { buildSummary, writeSummaryFile, writeRemoteSummary, writeAccountRow } from './summary-file.mjs';
 
 export const BODY_CAP = 1024 * 1024;
 export const MAX_RECORDS = 5000;
@@ -150,6 +150,7 @@ export function createCollector({ home, relayIntervalMs = 2000, remoteSummaryInt
     if (sumTimer) { clearTimeout(sumTimer); sumTimer = null; }
     lastWrite = Date.now();
     try { writeSummaryFile(paths.summary, buildSummary(store, paths, config())); } catch (e) { log('error', `summary write failed code=${e.code || 'unknown'}`); }
+    try { writeAccountRow(store, paths, config()); } catch (e) { log('error', `account row write failed code=${e.code || 'unknown'}`); }
   }
   function scheduleSummary() {
     if (sumTimer || closed) return;

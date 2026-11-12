@@ -40,6 +40,9 @@ Sources and pairing
                                      on the primary: prints a one-time pairing code (THE CODE IS A SECRET)
   pair join <code>                   on another computer: relay its usage to the primary
 
+Account page (combined total in your Claude account)
+  account link <url> [--label NAME] [--kind computer|cloud] | unlink | show [--json]
+
 Setup (installer)
   install [--yes] [--label NAME] [--no-import] | upgrade | uninstall --keep-data|--erase-data
   doctor | verify [--live]           verify --live sends one real Claude Code request
@@ -129,9 +132,11 @@ async function openStoreRW(paths) {
 }
 
 async function refreshSummaryFile(store, paths) {
-  const { buildSummary, writeSummaryFile } = await lazy.summary();
-  const s = buildSummary(store, paths, readConfig(paths));
+  const { buildSummary, writeSummaryFile, writeAccountRow } = await lazy.summary();
+  const cfg = readConfig(paths);
+  const s = buildSummary(store, paths, cfg);
   writeSummaryFile(paths.summary, s);
+  try { writeAccountRow(store, paths, cfg); } catch { /* account row is best effort */ }
   return s;
 }
 
@@ -337,6 +342,59 @@ async function cmdErase(ctx, flags) {
   return 0;
 }
 
+async function cmdAccount(ctx, pos, flags) {
+  const sub = pos[0];
+  const { ACCOUNT_URL_RE } = await lazy.summary();
+  const cfg = readConfig(ctx.paths);
+  if (sub === 'link') {
+    const url = String(pos[1] || '').replace(/[?#].*$/, '');
+    if (!ACCOUNT_URL_RE.test(url)) throw new UsageError('account link <https://claude.ai/artifact/...> [--label NAME] [--kind computer|cloud]');
+    const { randomBytes } = await import('node:crypto');
+    const prev = cfg.account && typeof cfg.account === 'object' ? cfg.account : {};
+    const rawLabel = typeof flags.label === 'string' ? flags.label : (prev.label || localLabel(cfg));
+    const label = String(rawLabel).replace(/[^\w .'-]/g, '').trim().slice(0, 60) || 'computer';
+    const account = {
+      url,
+      device: prev.url === url && /^d-[0-9a-f]{12}$/.test(prev.device || '') ? prev.device : 'd-' + randomBytes(6).toString('hex'),
+      label,
+      kind: flags.kind === 'cloud' ? 'cloud' : (prev.kind === 'cloud' && flags.kind === undefined ? 'cloud' : 'computer'),
+    };
+    ensureHome(ctx.paths.home);
+    writeConfig(ctx.paths, { ...readConfig(ctx.paths), account });
+    await writeRowNow(ctx);
+    ctx.out(`Account page linked: ${url}`);
+    ctx.out(`This device appears there as "${account.label}" (${account.kind}).`);
+    return 0;
+  }
+  if (sub === 'unlink') {
+    const { account, ...rest } = cfg;
+    writeConfig(ctx.paths, rest);
+    try { fs.unlinkSync(ctx.paths.accountRow); } catch { /* none */ }
+    ctx.out(account ? 'Account page unlinked on this device. Its row stays on the page until you delete it there.' : 'No account page was linked.');
+    return 0;
+  }
+  if (sub === 'show' || sub === undefined) {
+    if (!cfg.account) { ctx.out('No account page linked. Run /token-ledger:account in Claude Code to set one up.'); return 3; }
+    const row = await writeRowNow(ctx);
+    if (!row) { ctx.err('account row unavailable (no ledger yet?)'); return 3; }
+    if (flags.json) ctx.out(JSON.stringify(row, null, 2));
+    else {
+      ctx.out(`Account page: ${row.url}`);
+      ctx.out(`Device: ${row.data.label} (${row.data.kind}) · ${row.data.total.toLocaleString('en-US')} tokens · ${row.data.requests} requests`);
+    }
+    return 0;
+  }
+  throw new UsageError('account link <url> [--label NAME] [--kind computer|cloud] | unlink | show [--json]');
+}
+
+/** Rebuild account-row.json from the ledger now; returns the row or null. */
+async function writeRowNow(ctx) {
+  const { writeAccountRow } = await lazy.summary();
+  let store;
+  try { store = await openStoreRW(ctx.paths); } catch { return null; }
+  try { return writeAccountRow(store, ctx.paths, readConfig(ctx.paths)); } finally { store.close(); }
+}
+
 async function cmdSource(ctx, pos, flags) {
   const sub = pos[0];
   const { isLabel } = await import('./normalize.mjs');
@@ -494,6 +552,7 @@ export async function main(argv, env = process.env) {
       case 'export': return await cmdExport(ctx, flags);
       case 'erase': return await cmdErase(ctx, flags);
       case 'source': return await cmdSource(ctx, pos, flags);
+      case 'account': return await cmdAccount(ctx, pos, flags);
       case 'pair': return await cmdPair(ctx, pos, flags);
       case 'demo': return await cmdDemo(ctx, pos, flags);
       default:

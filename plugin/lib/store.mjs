@@ -200,6 +200,17 @@ export class Store {
     return rows.length;
   }
 
+  /** Totals of one source label only (this computer's own records), for the account page row. */
+  labelTotals(label) {
+    const a = this.db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(input),0) AS i, COALESCE(SUM(output),0) AS o,
+      COALESCE(SUM(cache_write),0) AS cw, COALESCE(SUM(cache_read),0) AS cr, MIN(ts) AS first, MAX(received_at) AS updated
+      FROM records WHERE source = ?`).get(label);
+    const input = Number(a.i), output = Number(a.o), cacheWrite = Number(a.cw), cacheRead = Number(a.cr);
+    return { requests: Number(a.n), input, output, cacheWrite, cacheRead, total: input + output + cacheWrite + cacheRead,
+      firstAt: a.first == null ? null : new Date(Number(a.first)).toISOString(),
+      lastAt: a.updated == null ? null : new Date(Number(a.updated)).toISOString() };
+  }
+
   // ---- summary (SPEC §4), SQL aggregates only ----
   summary({ localLabel = 'local', now = Date.now() } = {}) {
     const a = this.db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(input),0) AS i, COALESCE(SUM(output),0) AS o,

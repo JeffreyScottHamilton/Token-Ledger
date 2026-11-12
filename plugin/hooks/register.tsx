@@ -6,7 +6,12 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { LedgerSummary, LedgerView } from '../types'
-import { DISCLAIMER, formatCounter, formatDetails } from './format'
+import { DISCLAIMER, formatCounter, formatDetails, groupDigits, formatAge } from './format'
+import {
+  MAX_TURNS_ASKED, SECTION_ID, SYNC_EVERY_MS, forgetList, isCommittedWrite, lastSyncedAt, listDocs, otherDevices,
+  readRow, sectionText,
+} from './account'
+import type { AccountRow, PendingSync } from './account'
 
 type $ = EngineInterface
 
@@ -109,10 +114,46 @@ async function lastErrorLine($: $): Promise<string | undefined> {
   return undefined
 }
 
+/** Rows from the account page, other devices only, plus how fresh they are; null when not linked or unreachable. */
+async function accountPart($: $, row: AccountRow | null) {
+  if (!row) return null
+  const listed = await listDocs($, row.url)
+  if (!listed) return { row, others: null, fetchedAt: 0 }
+  return { row, others: otherDevices(listed.docs, row.device), fetchedAt: listed.fetchedAt }
+}
+
 async function buildView($: $): Promise<LedgerView> {
-  const summary = await loadSummary($)
+  const local = await loadSummary($)
   const t = await now($)
+  const acct = await accountPart($, await readRow($, await ledgerHome($)).catch(() => null))
+  let summary = local
+  const lines: string[] = []
+  if (acct) {
+    lines.push('', `Account page: ${acct.row.url}`)
+    const synced = await lastSyncedAt($)
+    lines.push(`This device (${acct.row.data.label ?? 'this computer'}): last synced to the page ${synced ? formatAge(new Date(synced).toISOString(), t) + ' ago' : 'not yet'}`)
+    if (acct.others === null) {
+      lines.push('Other devices: the account page could not be read; the total above is this computer only.')
+    } else if (acct.others.length === 0) {
+      lines.push('Other devices: none have reported yet.')
+    } else {
+      const extra = acct.others.reduce((a, d) => a + (d.data.total ?? 0), 0)
+      if (typeof local.total === 'number' && (local.status === 'ok' || local.status === 'empty' || local.status === 'stale')) {
+        summary = { ...local, total: local.total + extra, status: local.status === 'empty' && extra > 0 ? 'ok' : local.status }
+      }
+      lines.push('Other devices (from the account page):')
+      for (const d of acct.others) {
+        const when = d.data.updatedAt ? `reported ${formatAge(d.data.updatedAt, t)} ago` : 'report time unknown'
+        lines.push(`  ${d.data.label ?? d.id} [${d.data.kind}] · ${groupDigits(d.data.total ?? 0)} tokens · ${when}`)
+      }
+    }
+  }
   let details = formatDetails(summary, t)
+  if (lines.length) {
+    const cut = details.lastIndexOf(DISCLAIMER)
+    const block = lines.join('\n') + '\n\n'
+    details = cut >= 0 ? `${details.slice(0, cut)}${block}${details.slice(cut)}` : `${details}\n${block}`
+  }
   const err = await lastErrorLine($)
   if (err) {
     // Insert just before the closing disclaimer line.
@@ -163,17 +204,31 @@ async function autostart($: $): Promise<void> {
   try { await $.store.delete('lastError') } catch {}
 }
 
+/** The account write to ask Claude for today, or null when not linked or already synced within 20 hours. */
+async function prepareSync($: $): Promise<PendingSync | null> {
+  const row = await readRow($, await ledgerHome($))
+  if (!row) return null
+  const last = await lastSyncedAt($)
+  if (last !== undefined && (await now($)) - last < SYNC_EVERY_MS) return null
+  const listed = await listDocs($, row.url, true)
+  if (!listed) return null // page unreachable: try again next session
+  const mine = listed.docs.find(d => d.id === row.device)
+  return { url: row.url, device: row.device, data: row.data, ifVersion: mine?.version }
+}
+
 export const register: Register = (on, options) => {
   const showStatusRow = options.showStatusRow === true
   let isInteractive = false
+  let pending: PendingSync | null = null
+  let turnsAsked = 0
 
   on('session.start', async ($, e, next) => {
     isInteractive = e.isInteractive === true
     try {
       await $.command.register({
         name: COMMAND,
-        description: 'Token Ledger: total tracked tokens (details | refresh | pane)',
-        argumentHint: '[details|refresh|pane]',
+        description: 'Token Ledger: total tracked tokens (details | refresh | pane | account)',
+        argumentHint: '[details|refresh|pane|account]',
       })
     } catch (err) {
       try { $.ui.log(`could not register /${COMMAND}: ${errText(err)}`, { to: 'debug' }) } catch {}
@@ -185,6 +240,7 @@ export const register: Register = (on, options) => {
       $.clock.after(1, () => {
         void (async () => {
           await autostart($)
+          try { pending = await prepareSync($) } catch { pending = null }
           const v = await buildView($)
           await publish($, v)
           if (showStatusRow) $.ui.status(v.counter)
@@ -236,7 +292,19 @@ export const register: Register = (on, options) => {
         if (opened.isPlaced) return { text: 'Token Ledger pane opened. Esc or the close mark closes it.' }
         return { text: `${v.details}\n(The pane could not be shown here.)` }
       }
-      return { text: 'Usage: /token-ledger [details|refresh|pane]' }
+      if (arg === 'account') {
+        const row = await readRow($, await ledgerHome($))
+        if (!row) return { text: 'No account page linked on this device. Run /token-ledger:account to set one up.' }
+        const synced = await lastSyncedAt($)
+        const t = await now($)
+        return { text: [
+          `Account page: ${row.url}`,
+          `This device: ${row.data.label ?? 'this computer'} (${row.data.kind ?? 'computer'})`,
+          `Last synced: ${synced ? formatAge(new Date(synced).toISOString(), t) + ' ago' : 'not yet'}${pending ? ' · a sync is due in this session' : ''}`,
+          'It syncs once a day in your first chat. To sync now: /token-ledger:sync',
+        ].join('\n') }
+      }
+      return { text: 'Usage: /token-ledger [details|refresh|pane|account]' }
     } catch {
       return { text: formatCounter({ status: 'unavailable' }, 0) }
     }
@@ -259,6 +327,34 @@ export const register: Register = (on, options) => {
     try {
       const v = await buildView($)
       $.ui.toast(v.counter, { timeoutMs: 10000 })
+    } catch {}
+    return r
+  }).catch(($, e, next) => next(e))
+
+  // Daily account sync: ask Claude for the one write, at most MAX_TURNS_ASKED turns per session.
+  on('prompt.compose', async ($, e, next) => {
+    const r = await next(e)
+    if (!pending || turnsAsked >= MAX_TURNS_ASKED || !e.tools.includes('ArtifactData') && !e.tools.includes('ToolSearch')) return r
+    return { ...r, sections: [...r.sections, { id: SECTION_ID, text: sectionText(pending), scope: 'session' as const }] }
+  }).catch(($, e, next) => next(e))
+
+  on('turn.complete', async ($, e, next) => {
+    const r = await next(e)
+    if (pending) {
+      turnsAsked++
+      if (turnsAsked >= MAX_TURNS_ASKED) pending = null
+    }
+    return r
+  }).catch(($, e, next) => next(e))
+
+  on('tool.call', { tool: 'ArtifactData' }, async ($, e, next) => {
+    const r = await next(e)
+    try {
+      if (pending && isCommittedWrite(e as unknown as Record<string, unknown>, r, pending)) {
+        pending = null
+        await $.store.set('accountSyncedAt', await now($))
+        await forgetList($)
+      }
     } catch {}
     return r
   }).catch(($, e, next) => next(e))

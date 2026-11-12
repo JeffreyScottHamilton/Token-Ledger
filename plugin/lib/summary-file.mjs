@@ -64,3 +64,37 @@ export function writeRemoteSummary(paths, data) {
 export function removeIfExists(file) {
   try { fs.unlinkSync(file); } catch { /* ignore */ }
 }
+
+// ---------- account page row ----------
+
+export const ACCOUNT_URL_RE = /^https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]{6,80}$/;
+
+/**
+ * This computer's row for the private account page (config.account): its own records only, so totals that
+ * arrived from paired computers are never counted twice. Allowlisted fields only.
+ */
+export function buildAccountRow(store, config, now = Date.now()) {
+  const a = config && config.account;
+  if (!a || typeof a.url !== 'string' || !ACCOUNT_URL_RE.test(a.url) || typeof a.device !== 'string') return null;
+  const t = store.labelTotals(localLabel(config));
+  return {
+    url: a.url,
+    device: a.device,
+    data: {
+      app: 'token-ledger', v: 1,
+      label: String(a.label || localLabel(config)).slice(0, 60),
+      kind: a.kind === 'cloud' ? 'cloud' : 'computer',
+      total: t.total, input: t.input, output: t.output, cacheWrite: t.cacheWrite, cacheRead: t.cacheRead,
+      requests: t.requests, firstAt: t.firstAt, lastAt: t.lastAt,
+      updatedAt: new Date(now).toISOString(),
+    },
+  };
+}
+
+/** Write account-row.json next to summary.json, or remove it when account sync is off. */
+export function writeAccountRow(store, paths, config, now = Date.now()) {
+  const row = buildAccountRow(store, config, now);
+  if (!row) { try { fs.unlinkSync(paths.accountRow); } catch { /* none */ } return null; }
+  writeFileAtomic(paths.accountRow, JSON.stringify(row, null, 2) + '\n');
+  return row;
+}
