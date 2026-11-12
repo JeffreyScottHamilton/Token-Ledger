@@ -1,0 +1,22 @@
+#!/bin/sh
+# Claude Token Ledger CLI wrapper (POSIX sh). Finds Node.js >= 22.13 and runs token-ledger.mjs.
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+node_bin=""
+if [ -n "$TOKEN_LEDGER_NODE" ] && [ -x "$TOKEN_LEDGER_NODE" ]; then
+  node_bin=$TOKEN_LEDGER_NODE
+elif command -v node >/dev/null 2>&1; then
+  node_bin=$(command -v node)
+else
+  for c in /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node "$HOME/.volta/bin/node"; do
+    if [ -x "$c" ]; then node_bin=$c; break; fi
+  done
+fi
+if [ -z "$node_bin" ]; then
+  echo "token-ledger: Node.js 22.13 or newer is required but was not found." >&2
+  case "$(uname -s 2>/dev/null)" in
+    Darwin) echo "Install it with: brew install node   (or nvm install --lts)" >&2 ;;
+    *) echo "Install it with nvm (nvm install --lts) or your package manager (Node 22+)." >&2 ;;
+  esac
+  exit 3
+fi
+exec "$node_bin" --no-warnings "$dir/token-ledger.mjs" "$@"

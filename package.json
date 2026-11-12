@@ -1,0 +1,16 @@
+{
+  "name": "token-ledger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Claude Token Ledger: a local, privacy-preserving ledger of Claude Code API token usage.",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "bin": {
+    "token-ledger": "plugin/bin/token-ledger.mjs"
+  },
+  "scripts": {
+    "test": "node --test --test-reporter=spec \"tests/**/*.test.mjs\""
+  }
+}

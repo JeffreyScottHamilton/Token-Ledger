@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.tgz
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.pid
+*.tmp
+.DS_Store
+Thumbs.db
+.env
+.env.*
+.claude/settings.local.json
+# local ledger data must never be committed
+.claude-token-ledger/
+summary.json
+install-manifest.json

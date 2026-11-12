@@ -1,0 +1,17 @@
+{
+  "modules": ["./register.tsx"],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/lib/install/hook-ensure.mjs"],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

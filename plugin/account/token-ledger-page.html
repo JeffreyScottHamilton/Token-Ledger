@@ -1,0 +1,120 @@
+<title>Token Ledger</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one narrow ledger column — the total as the headline entry, then one line per device, like a meter log. */
+:root {
+  --bg: #f6f7f5; --surface: #ffffff; --fg: #1d2420; --muted: #5d6a63; --rule: #d9dfdb; --accent: #2f6f55; --warn: #9a5b12;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121614; --surface: #1a201d; --fg: #e4ebe7; --muted: #94a39b; --rule: #2c3531; --accent: #7cc7a5; --warn: #e0a85a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121614; --surface: #1a201d; --fg: #e4ebe7; --muted: #94a39b; --rule: #2c3531; --accent: #7cc7a5; --warn: #e0a85a; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); }
+main { max-width: 640px; margin: 0 auto; padding-block: 40px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 28px; }
+.label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.total { display: grid; gap: 6px; }
+.total .num { font-family: var(--mono); font-size: clamp(36px, 9vw, 56px); font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.05; word-break: break-all; }
+.total .sub { color: var(--muted); font-size: 14px; }
+.devices { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; padding: 14px 16px; border-top: 1px solid var(--rule); }
+.row:first-child { border-top: 0; }
+.row .name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.row .val { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.row .meta { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
+.row .meta.stale { color: var(--warn); }
+.breakdown { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+.breakdown div { display: grid; gap: 2px; }
+.breakdown .v { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.empty, .note { color: var(--muted); font-size: 14px; line-height: 1.55; max-width: 62ch; }
+code { font-family: var(--mono); font-size: 13px; }
+</style>
+
+<main>
+  <section class="total" aria-live="polite">
+    <span class="label">Total tokens</span>
+    <span class="num" id="total">…</span>
+    <span class="sub" id="sub">Waiting for the ledger.</span>
+  </section>
+
+  <section class="breakdown" id="breakdown" hidden>
+    <div><span class="label">Uncached input</span><span class="v" id="b-input"></span></div>
+    <div><span class="label">Output</span><span class="v" id="b-output"></span></div>
+    <div><span class="label">Cache writes</span><span class="v" id="b-cw"></span></div>
+    <div><span class="label">Cache reads</span><span class="v" id="b-cr"></span></div>
+  </section>
+
+  <section>
+    <p class="label" style="margin:0 0 10px">Devices</p>
+    <div class="devices" id="devices">
+      <p class="empty" style="margin:0;padding:16px">No devices have reported yet. Each computer with Token Ledger installed adds its own line here after its next Claude Code session.</p>
+    </div>
+  </section>
+
+  <p class="note">Counts recorded Claude Code API usage from devices that report here. Not a bill or plan-limit meter. Regular claude.ai chats are not included.</p>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => (typeof n === 'number' && isFinite(n) ? Math.round(n) : 0).toLocaleString('en-US');
+  const ago = (iso) => {
+    const t = Date.parse(iso); if (!isFinite(t)) return 'unknown';
+    const s = Math.max(0, (Date.now() - t) / 1000);
+    if (s < 90) return 'just now';
+    if (s < 5400) return Math.round(s / 60) + ' min ago';
+    if (s < 172800) return Math.round(s / 3600) + ' h ago';
+    return Math.round(s / 86400) + ' days ago';
+  };
+  const STALE_MS = 7 * 86400e3;
+
+  function render(docs) {
+    const rows = docs.filter((d) => d && typeof d.total === 'number' && d.total >= 0)
+      .sort((a, b) => (b.total || 0) - (a.total || 0));
+    if (!rows.length) {
+      $('total').textContent = '0';
+      $('sub').textContent = 'No devices have reported yet.';
+      $('breakdown').hidden = true;
+      return;
+    }
+    const sum = (k) => rows.reduce((a, d) => a + (typeof d[k] === 'number' ? d[k] : 0), 0);
+    $('total').textContent = fmt(sum('total'));
+    const latest = rows.map((d) => Date.parse(d.updatedAt)).filter(isFinite).sort((a, b) => b - a)[0];
+    $('sub').textContent = `${rows.length} device${rows.length === 1 ? '' : 's'} · updated ${latest ? ago(new Date(latest).toISOString()) : 'unknown'}`;
+    $('b-input').textContent = fmt(sum('input'));
+    $('b-output').textContent = fmt(sum('output'));
+    $('b-cw').textContent = fmt(sum('cacheWrite'));
+    $('b-cr').textContent = fmt(sum('cacheRead'));
+    $('breakdown').hidden = false;
+
+    const box = $('devices'); box.textContent = '';
+    for (const d of rows) {
+      const row = document.createElement('div'); row.className = 'row';
+      const name = document.createElement('span'); name.className = 'name'; name.textContent = String(d.label || 'device');
+      const val = document.createElement('span'); val.className = 'val'; val.textContent = fmt(d.total);
+      const meta = document.createElement('span');
+      const stale = Date.now() - Date.parse(d.updatedAt) > STALE_MS;
+      meta.className = 'meta' + (stale ? ' stale' : '');
+      meta.textContent = `${d.kind === 'cloud' ? 'Cloud environment' : 'Computer'} · last reported ${ago(d.updatedAt)}${stale ? ' · not reporting' : ''}`;
+      row.append(name, val, meta); box.append(row);
+    }
+  }
+
+  const timer = setTimeout(() => { $('sub').textContent = 'The ledger did not answer. Open this page while signed in to claude.ai.'; $('total').textContent = '—'; }, 10000);
+
+  (async () => {
+    const db = await claude.use('db');
+    if (!db) { clearTimeout(timer); $('total').textContent = '—'; $('sub').textContent = 'Sign in to claude.ai as the owner to see the total.'; return; }
+    db.collection('devices').onSnapshot((snap) => {
+      clearTimeout(timer);
+      const docs = (snap.docs || []).map((d) => (typeof d.data === 'function' ? d.data() : d.data));
+      render(docs);
+    }, () => { clearTimeout(timer); $('total').textContent = '—'; $('sub').textContent = 'Could not read the ledger. Only the owner can view it.'; });
+  })();
+})();
+</script>
